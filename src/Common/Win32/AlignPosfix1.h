@@ -33,4 +33,4 @@
 // ******************************************************************
 
 // turn off 1-byte structure alignment
-#pragma pack()
+#pragma pack(pop)

@@ -33,7 +33,7 @@
 // ******************************************************************
 
 // turn on 1-byte structure alignment
-#pragma pack(1)
+#pragma pack(push, 1)
 
 // tell the compiler not to complain about this *odd* circumstance
 #pragma warning(disable:4103)

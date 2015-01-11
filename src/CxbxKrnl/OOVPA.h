@@ -53,7 +53,7 @@ template <class BaseClass, typename MFT> inline void *MFPtoFP( MFT pMemFunc)
     return ThisConv.pFunc;
 }
 
-#pragma pack(1)
+#include "AlignPrefix1.h"
 
 // ******************************************************************
 // * Optimized (Order,Value)-Pair Array
@@ -121,6 +121,6 @@ struct OOVPATable
     #endif
 };
 
-#pragma pack()
+#include "AlignPosfix1.h"
 
 #endif
