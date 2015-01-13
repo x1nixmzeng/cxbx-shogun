@@ -88,6 +88,11 @@ class WndMain : public Wnd
         void StartEmulation(EnumAutoConvert x_bAutoConvert, HWND hwndParent);
 
         // ******************************************************************
+        // * Run a proof of concept debugger for emulated processes
+        // ******************************************************************
+        void DebugEmulation();
+
+        // ******************************************************************
         // * stop emulation (close existing child window)
         // ******************************************************************
         void StopEmulation();
@@ -161,6 +166,9 @@ class WndMain : public Wnd
         // * cached child window handle
         // ******************************************************************
         HWND        m_hwndChild;
+
+        STARTUPINFO m_startupInfo;
+        PROCESS_INFORMATION m_processInfo;
 
         // ******************************************************************
         // * should emulation always auto-create the .exe?

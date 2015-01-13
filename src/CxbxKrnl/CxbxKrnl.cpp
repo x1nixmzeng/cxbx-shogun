@@ -507,8 +507,19 @@ extern "C" CXBXKRNL_API void CxbxKrnlCleanup(const char *szErrorMessage, ...)
 
         printf("%s\n", szBuffer1);
 
-        MessageBox(NULL, szBuffer1, "CxbxKrnl", MB_OK | MB_ICONEXCLAMATION);
+        // Step 1: log this debug string (we can catch this event)
+        OutputDebugString(szBuffer1);
+
+        // Step 2: raise an exception instead (we can catch and process this also)
+        RaiseException(STATUS_ACCESS_VIOLATION, 0, 0, nullptr);
+
+        // Old method was a message box.. 
+        //MessageBox(NULL, szBuffer1, "CxbxKrnl", MB_OK | MB_ICONEXCLAMATION);
     }
+
+    // So from here, the debugger handles what happens next
+    // (although we will most likely be terminated)
+    // ..
 
     printf("CxbxKrnl: Terminating Process\n");
     fflush(stdout);
@@ -527,6 +538,8 @@ extern "C" CXBXKRNL_API void CxbxKrnlCleanup(const char *szErrorMessage, ...)
         SendMessage(CxbxKrnl_hEmuParent, WM_PARENTNOTIFY, WM_DESTROY, 0);
 
     TerminateProcess(GetCurrentProcess(), 0);
+
+    // ..
 
     return;
 }

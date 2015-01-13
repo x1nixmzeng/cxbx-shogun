@@ -83,10 +83,10 @@ typedef signed long    sint32;
 //#define _DEBUG_DUMP_TEXTURE_REGISTER   "D:\\cxbx\\_textures\\"
 
 /*! version string dependent on trace flag */
-#ifndef _DEBUG_TRACE
-#define _CXBX_VERSION "0.8.1-Pre3"
+#ifdef _DEBUG_TRACE
+#define _CXBX_VERSION "0.8.2-LOCAL-Trace"
 #else
-#define _CXBX_VERSION "0.8.1-Pre3-Trace"
+#define _CXBX_VERSION "0.8.2-LOCAL"
 #endif
 
 /*! debug mode choices */

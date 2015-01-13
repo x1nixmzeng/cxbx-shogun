@@ -31,6 +31,9 @@
 // *  All rights reserved
 // *
 // ******************************************************************
+
+#include <vector>
+
 #include "WndMain.h"
 #include "WndAbout.h"
 #include "DlgControllerConfig.h"
@@ -1885,18 +1888,187 @@ void WndMain::StartEmulation(EnumAutoConvert x_AutoConvert, HWND hwndParent)
         if(spot != -1)
             szBuffer[spot] = '\0';
 
-        if((int)ShellExecute(NULL, "open", m_ExeFilename, NULL, szBuffer, SW_SHOWDEFAULT) <= 32)
-        {
-            m_bCanStart = true;
-            MessageBox(m_hwnd, "Emulation failed.\n\nTry converting again. If this message repeats, the Xbe is not supported.", "Cxbx", MB_ICONSTOP | MB_OK);
+        // x1nixmzeng: we want AS MUCH control over our emulation as possible
+        // for this reason, we can control the session better using exceptions
+        // From within CxbxKrnl, and catching them ourselves:
 
-            printf("WndMain: %s shell failed.\n", m_Xbe->m_szAsciiTitle);
+        ZeroMemory(&m_startupInfo, sizeof(m_startupInfo));
+        m_startupInfo.cb = sizeof(m_startupInfo);
+        ZeroMemory(&m_processInfo, sizeof(m_processInfo));
+
+        // http://www.codereversing.com/blog/?p=168
+        // http://msdn.microsoft.com/en-us/library/windows/desktop/ms679288%28v=vs.85%29.aspx
+
+        if (CreateProcess(NULL, m_ExeFilename, NULL, NULL, FALSE, NORMAL_PRIORITY_CLASS|DEBUG_PROCESS, NULL, szBuffer, &m_startupInfo, &m_processInfo))
+        {
+          printf("WndMain: %s emulation started.\n", m_Xbe->m_szAsciiTitle);
+
+          DebugEmulation();
         }
         else
         {
-            printf("WndMain: %s emulation started.\n", m_Xbe->m_szAsciiTitle);
+          m_bCanStart = true;
+          MessageBox(m_hwnd, "Emulation failed.\n\nTry converting again. If this message repeats, the Xbe is not supported.", "Cxbx", MB_ICONSTOP | MB_OK);
+
+          printf("WndMain: %s failed to launch process.\n", m_Xbe->m_szAsciiTitle);
         }
     }
+}
+
+void WndMain::DebugEmulation()
+{
+  // NOTE: This isn't quick enough when we do crash
+  bool kill_on_exit = true;
+  const bool bIsSuccess = !!DebugSetProcessKillOnExit(kill_on_exit);
+
+  if (!bIsSuccess)
+  {
+    printf("WndMain: Could not set process kill-on-exit policy. Error = %X\n", GetLastError());
+  }
+
+  DEBUG_EVENT DebugEvent;
+  DWORD dwContinueStatus = DBG_CONTINUE;
+
+  for (;;)
+  {
+    // Let's not periodically check if our process is still active
+
+    //DWORD dwExitCode = STILL_ACTIVE;
+    //GetExitCodeProcess(m_processInfo.hProcess, &dwExitCode)
+
+    if (!WaitForDebugEvent(&DebugEvent, INFINITE))
+    {
+      printf("WndMain: Failed to wait for debug event.\n");
+      break;
+    }
+
+    switch (DebugEvent.dwDebugEventCode)
+    {
+    case EXCEPTION_DEBUG_EVENT:
+      // Process the exception code. When handling
+      // exceptions, remember to set the continuation
+      // status parameter (dwContinueStatus). This value
+      // is used by the ContinueDebugEvent function.
+
+      switch (DebugEvent.u.Exception.ExceptionRecord.ExceptionCode)
+      {
+      case EXCEPTION_ACCESS_VIOLATION:
+        // First chance: Pass this on to the system.
+        // Last chance: Display an appropriate error.
+
+        // We've edited CxbxKrnl.cpp to raise this exception when we knowingly crash:
+        dwContinueStatus = DBG_EXCEPTION_NOT_HANDLED;
+        break;
+      case EXCEPTION_BREAKPOINT:
+        // First chance: Display the current
+        // instruction and register values.
+        break;
+      case EXCEPTION_DATATYPE_MISALIGNMENT:
+        // First chance: Pass this on to the system.
+        // Last chance: Display an appropriate error.
+        break;
+      case EXCEPTION_SINGLE_STEP:
+        // First chance: Update the display of the
+        // current instruction and register values.
+        break;
+      case DBG_CONTROL_C:
+        // First chance: Pass this on to the system.
+        // Last chance: Display an appropriate error.
+        break;
+      default:
+        // Handle other exceptions.
+
+        // Custom ones .. (: ?!?
+
+        break;
+      }
+      break;
+    case CREATE_THREAD_DEBUG_EVENT:
+      // As needed, examine or change the thread's registers
+      // with the GetThreadContext and SetThreadContext functions;
+      // and suspend and resume thread execution with the
+      // SuspendThread and ResumeThread functions.
+      //dwContinueStatus = OnCreateThreadDebugEvent(DebugEv);
+      break;
+    case CREATE_PROCESS_DEBUG_EVENT:
+      // As needed, examine or change the registers of the
+      // process's initial thread with the GetThreadContext and
+      // SetThreadContext functions; read from and write to the
+      // process's virtual memory with the ReadProcessMemory and
+      // WriteProcessMemory functions; and suspend and resume
+      // thread execution with the SuspendThread and ResumeThread
+      // functions. Be sure to close the handle to the process image
+      // file with CloseHandle.
+      //dwContinueStatus = OnCreateProcessDebugEvent(DebugEv);
+      break;
+    case EXIT_THREAD_DEBUG_EVENT:
+      // Display the thread's exit code.
+      //dwContinueStatus = OnExitThreadDebugEvent(DebugEv);
+      break;
+    case EXIT_PROCESS_DEBUG_EVENT:
+      // Display the process's exit code.
+      //dwContinueStatus = OnExitProcessDebugEvent(DebugEv);
+      break;
+    case LOAD_DLL_DEBUG_EVENT:
+      // Read the debugging information included in the newly
+      // loaded DLL. Be sure to close the handle to the loaded DLL
+      // with CloseHandle.
+      //dwContinueStatus = OnLoadDllDebugEvent(DebugEv);
+      break;
+    case UNLOAD_DLL_DEBUG_EVENT:
+      // Display a message that the DLL has been unloaded.
+      //dwContinueStatus = OnUnloadDllDebugEvent(DebugEv);
+      break;
+    case OUTPUT_DEBUG_STRING_EVENT:
+    {
+      OUTPUT_DEBUG_STRING_INFO &info = DebugEvent.u.DebugString;
+
+      if (!info.fUnicode)
+      {
+        std::vector<char> buf(info.nDebugStringLength);
+
+        DWORD dwBytesRead = 0;
+        const bool bSuccess = !!ReadProcessMemory(m_processInfo.hProcess, info.lpDebugStringData, &buf[0], info.nDebugStringLength, &dwBytesRead);
+
+        if (bSuccess)
+        {
+          printf("Krnl: [DEBUG] %s\n", reinterpret_cast<const char*>(&buf[0]));
+        }
+        else
+        {
+          printf("Failed to read debug string\n");
+        }
+      }
+    }
+      break;
+    case RIP_EVENT:
+      break;
+    }
+
+    // Exit when we've knowingly reached the point of no return
+    if (dwContinueStatus == DBG_EXCEPTION_NOT_HANDLED)
+    {
+      break;
+    }
+
+    if (!ContinueDebugEvent(DebugEvent.dwProcessId, DebugEvent.dwThreadId, dwContinueStatus))
+    {
+      printf("WndMain: Failed to continue debugging.\n");
+      break;
+    }
+  }
+
+  // If we stop the debugging session here, the process will go on to crash
+  //DebugActiveProcessStop(m_processInfo.dwProcessId);
+
+  // So let's termiante it for now
+  TerminateProcess(m_processInfo.hProcess, 0xDEADC0DEul);
+
+  // For our own sanity reasons
+  CloseHandle(m_processInfo.hProcess);
+  CloseHandle(m_processInfo.hThread);
+
+  printf("WndMain: Emulation terminated\n");
 }
 
 // stop emulation
